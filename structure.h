@@ -32,6 +32,7 @@ typedef struct gtthread_tcb{
 	gtthread_t thrid;
 	int isblocked;
 	int iscomplete;
+	void* ret;
 	queue_t join_queue;
 	void* joinval;
 }gtthread_tcb;

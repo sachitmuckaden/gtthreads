@@ -13,7 +13,7 @@
 
 void* schedule_next(int signum);
 int initializesighandler();
-void wrapper_function(void*(*start_routine(void)), void* params);
+void wrapper_function(void*(*start_routine(void*)), void* params);
 
 sigset_t threadprocmask;
 void gtthread_init(long period)
@@ -45,6 +45,7 @@ void gtthread_init(long period)
 	main_thrcb->thrid = 0;
 	main_thrcb->isblocked = 0;
 	main_thrcb->iscomplete = 0;
+	main_thrcb->ctxt =&main_ctxt;
 	queue_init(&main_thrcb->join_queue);
 	main_thrcb->joinval = NULL;
 	queue_insert(&readyqueue, main_thrcb);
@@ -72,16 +73,19 @@ int initializesighandler()
 	return 1;
 }
 
-void wrapper_function(void*(*start_routine(void)), void* params)
+void wrapper_function(void*(*start_routine(void*)), void* params)
 {
 	void* retval;
-	printf("Timer: %ld\n",(long) interval.it_value.tv_usec );
+	//printf("Timer: %ld\n",(long) interval.it_value.tv_usec );
 
-	retval = start_routine();
+	retval = start_routine(params);
+	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+	current_thrcb->ret = retval;
 	if(DEBUG)
 	{
 		printf("Wrapper received return value: %d\n", *(int*)retval);
 	}
+	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 	gtthread_exit(retval);
 
 }
@@ -135,6 +139,18 @@ int  gtthread_join(gtthread_t thread, void **status)
 	gtthread_tcb* joinable = queue_search(&readyqueue, thread);
 	if(joinable==NULL)
 	{
+		joinable = queue_search(&deletequeue,thread);
+		if(joinable!=NULL)
+		{
+			*status = joinable->ret;
+			sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+			return 0;
+
+		}
+	}
+
+	if(joinable==NULL)
+	{
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 		return ESRCH;
 	}
@@ -178,7 +194,8 @@ void gtthread_exit(void *retval)
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 		schedule_next(SIGINT);
 	}
-	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+	else
+		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 }
 
 int  gtthread_cancel(gtthread_t thread)
@@ -204,12 +221,17 @@ int  gtthread_cancel(gtthread_t thread)
 	{
 		queue_unblock_all(&(canceltcb->join_queue), (void*)retval);
 	}
-
+	canceltcb->ret = (void*) retval;
 	//free(retval);
 
 	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 	return 1;
 	//gtthread_exit(retval);
+}
+
+int  gtthread_equal(gtthread_t t1, gtthread_t t2)
+{
+	return t1==t2;
 }
 
 
@@ -220,7 +242,7 @@ void* schedule_next(int signum)
 {
 
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
-	if((size_of_q(&readyqueue))>1)//if false this means only the main thread is in the queue
+	//if false this means only the main thread is in the queue
 	{
 		printf("Scheduling next thread-----------------\n");
 		gtthread_tcb* tmpthr;
@@ -228,15 +250,26 @@ void* schedule_next(int signum)
 		current_thrcb = queue_next(&readyqueue);
 		while(current_thrcb->isblocked)
 		{
-			printf("Current thread blocked: %ld", (long)current_thrcb->thrid);
+			printf("Current thread blocked: %ld\n", (long)current_thrcb->thrid);
 			current_thrcb = queue_next(&readyqueue);
 
 		}
 		printf("Swapping %ld for %ld\n", tmpthr->thrid, current_thrcb->thrid);
 		interval.it_value.tv_usec = timeslice;
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
-		swapcontext(tmpthr->ctxt, current_thrcb->ctxt);
+		if(!setmain)
+		{
+			printf("Main has been set\n");
+			setmain = 1;
+			swapcontext(&main_ctxt, current_thrcb->ctxt);
+
+		}
+		else
+		{
+			swapcontext(tmpthr->ctxt, current_thrcb->ctxt);
+		}
 	}
+
 	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 	return (void*) 0;
 }

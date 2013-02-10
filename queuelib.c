@@ -107,12 +107,14 @@ gtthread_tcb* queue_search(queue_t* q, gtthread_t thread)
 	}
 	queue_node* current_node;
 	current_node = q->front;
-	while(current_node!=NULL)
+	int count = 1;
+	while(count<=q->nelements)
 	{
 		if(current_node->thrcb->thrid==thread)
 			return current_node->thrcb;
 
 		current_node = current_node->next;
+		count++;
 	}
 	return NULL;
 }
