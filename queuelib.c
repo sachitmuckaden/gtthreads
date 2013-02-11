@@ -38,11 +38,11 @@ queue_node* queue_remove(queue_t* q,  long thread)
 	else if(qnode->thrcb->thrid == q->back->thrcb->thrid)
 	{
 		q->back = q->back->prev;
+		q->front->prev = q->back;
 	}
 	qnode->prev->next = qnode->next;
 	qnode->next->prev = qnode->prev;
 	q->nelements--;
-
 
 	return qnode;
 }
@@ -64,6 +64,7 @@ int queue_insert(queue_t* q, gtthread_tcb* qthrcb)
 
 	}
 	qnode->next = q->front;
+	q->front->prev = q->back;
 	q->nelements++;
 	return 1;
 }

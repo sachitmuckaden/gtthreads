@@ -80,10 +80,10 @@ void wrapper_function(void*(*start_routine(void*)), void* params)
 
 	retval = start_routine(params);
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
-	current_thrcb->ret = retval;
+
 	if(DEBUG)
 	{
-		printf("Wrapper received return value: %d\n", *(int*)retval);
+		//printf("Wrapper received return value: %d\n", *(int*)retval);
 	}
 	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 	gtthread_exit(retval);
@@ -142,7 +142,9 @@ int  gtthread_join(gtthread_t thread, void **status)
 		joinable = queue_search(&deletequeue,thread);
 		if(joinable!=NULL)
 		{
-			*status = joinable->ret;
+			printf("Thread over returning\n");
+			if(status!=NULL)
+				*status = joinable->ret;
 			sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 			return 0;
 
@@ -158,7 +160,8 @@ int  gtthread_join(gtthread_t thread, void **status)
 	queue_insert_normal(&joinable->join_queue,  current_thrcb);
 	current_thrcb->isblocked =1;
 	schedule_next(26);
-	*status = current_thrcb->joinval;
+	if(status!=NULL)
+		*status = current_thrcb->joinval;
 	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 	return 0;
 	//free(current_thr->joinval);
@@ -179,8 +182,9 @@ void gtthread_exit(void *retval)
 	//Remember process shared resources should not be released. When implementing locks etc dp npt release locks on gtthread_exit
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
 	current_thrcb->iscomplete = 1;
+	current_thrcb->ret = retval;
 	//queue_insert_normal(&deletequeue, (queue_remove(&readyqueue, current_thrcb->thrid))->thrcb);
-	printf("Succesfully removed from queue\n");
+	//printf("Succesfully removed from queue\n");
 
 	//SIGMASK ALL
 	if(size_of_q(&(current_thrcb->join_queue))>0)
@@ -221,6 +225,7 @@ int  gtthread_cancel(gtthread_t thread)
 	{
 		queue_unblock_all(&(canceltcb->join_queue), (void*)retval);
 	}
+
 	canceltcb->ret = (void*) retval;
 	//free(retval);
 
@@ -256,9 +261,11 @@ int  gtthread_mutex_lock(gtthread_mutex_t *mutex)
 	while(mutex->lock)
 	{
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+		printf("Waiting for lock####################################################\n");
 		schedule_next(SIGINT);
 	}
 	mutex->lock = 1;
+	printf("Acquired finally\n");
 	mutex->owner = current_thrcb->thrid;
 	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 	return 0;
