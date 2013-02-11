@@ -7,7 +7,7 @@ RANLIB  = ranlib
 
 LIBRARY = libgtthreads.a
 
-LIB_SRC = gtthreads.c queuelib.c
+LIB_SRC = gtthread.c queuelib.c
 
 LIB_OBJ = $(patsubst %.c,%.o,$(LIB_SRC))
 

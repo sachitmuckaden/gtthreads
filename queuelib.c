@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 void queue_init(queue_t* q)
 {
@@ -130,7 +130,7 @@ void queue_unblock_all(queue_t* q, void* retval)
 	{
 		current_node->thrcb->isblocked = 0;
 		current_node->thrcb->joinval = retval;
-		printf("Unblocked: %ld\n", (long)current_node->thrcb->thrid);
+		if(DEBUG)printf("Unblocked: %ld\n", (long)current_node->thrcb->thrid);
 		current_node = current_node->next;
 		//*current_node->thr->joinval = *retval;
 	}

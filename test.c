@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "gtthreads.h"
+#include "gtthread.h"
 
 
 void* routine1(void* params);

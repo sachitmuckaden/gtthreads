@@ -8,7 +8,7 @@
 #ifndef VALUES_H_
 #define VALUES_H_
 
-#define DEBUG 1
+#define DEBUG 0
 #define STACK_SIZE 16384
 #define MAIN_INTERVAL 10000
 #endif /* VALUES_H_ */
