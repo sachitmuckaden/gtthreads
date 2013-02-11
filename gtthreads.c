@@ -28,7 +28,7 @@ void gtthread_init(long period)
 	memset(&interval,0,sizeof(interval));
 
 	interval.it_interval.tv_sec = 0;
-	interval.it_interval.tv_usec = period;
+	interval.it_interval.tv_usec = 0;
 	interval.it_value.tv_sec = 0;
 	interval.it_value.tv_usec = period;
 	timeslice = period;
@@ -179,7 +179,7 @@ void gtthread_exit(void *retval)
 	//Remember process shared resources should not be released. When implementing locks etc dp npt release locks on gtthread_exit
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
 	current_thrcb->iscomplete = 1;
-	queue_insert_normal(&deletequeue, (queue_remove(&readyqueue, current_thrcb->thrid))->thrcb);
+	//queue_insert_normal(&deletequeue, (queue_remove(&readyqueue, current_thrcb->thrid))->thrcb);
 	printf("Succesfully removed from queue\n");
 
 	//SIGMASK ALL
@@ -234,7 +234,57 @@ int  gtthread_equal(gtthread_t t1, gtthread_t t2)
 	return t1==t2;
 }
 
+int  gtthread_mutex_init(gtthread_mutex_t *mutex)
+{
+	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+	//if() Check if has already been initialized.
+	mutex = (gtthread_mutex_t*) malloc(sizeof(gtthread_mutex_t));
+	mutex->lock = 0;
+	//mutex->destroyed = 0;
+	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+	return 0;
+}
 
+int  gtthread_mutex_lock(gtthread_mutex_t *mutex)
+{
+	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+	if(mutex->owner==current_thrcb->thrid)
+	{
+		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+		return EDEADLK;
+	}
+	while(mutex->lock)
+	{
+		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+		schedule_next(SIGINT);
+	}
+	mutex->lock = 1;
+	mutex->owner = current_thrcb->thrid;
+	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+	return 0;
+}
+
+int  gtthread_mutex_unlock(gtthread_mutex_t *mutex)
+{
+	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+	if(current_thrcb->thrid!=mutex->owner)
+	{
+		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+		return EPERM;
+	}
+	else if(!mutex->lock)
+	{
+		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+		return EPERM;
+	}
+	else
+	{
+		mutex->lock = 0;
+		mutex->owner = -1;
+	}
+	sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
+	return 0;
+}
 
 
 
@@ -242,8 +292,12 @@ void* schedule_next(int signum)
 {
 
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
-	//if false this means only the main thread is in the queue
+	if (size_of_q(&readyqueue)>1)//false this means only the main thread is in the queue
 	{
+		if(current_thrcb->iscomplete)
+		{
+			queue_insert_normal(&deletequeue, (queue_remove(&readyqueue, current_thrcb->thrid))->thrcb);
+		}
 		printf("Scheduling next thread-----------------\n");
 		gtthread_tcb* tmpthr;
 		tmpthr = current_thrcb;
@@ -261,11 +315,13 @@ void* schedule_next(int signum)
 		{
 			printf("Main has been set\n");
 			setmain = 1;
+			setitimer(ITIMER_VIRTUAL, &interval, NULL);
 			swapcontext(&main_ctxt, current_thrcb->ctxt);
 
 		}
 		else
 		{
+			setitimer(ITIMER_VIRTUAL, &interval, NULL);
 			swapcontext(tmpthr->ctxt, current_thrcb->ctxt);
 		}
 	}

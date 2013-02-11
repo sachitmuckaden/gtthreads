@@ -14,6 +14,7 @@
 void* routine1(void* params);
 void* routine2(void* params);
 
+gtthread_mutex_t mymutex;
 void main(int argc, char** argv)
 {
 	gtthread_t thread1, thread2;
@@ -23,6 +24,7 @@ void main(int argc, char** argv)
 	printf("This is the main function. \n");
 	printf("Initializing the gtthreads with period %ld\n", period);
 	gtthread_init(period);
+	gtthread_mutex_init(&mymutex);
 	printf("gtthreads initialized.\n");
 	printf("Creating the first thread\n");
 	gtthread_create(&thread1, &routine1, NULL);
@@ -36,6 +38,7 @@ void main(int argc, char** argv)
 	gtthread_join(thread1, &returnvalue2);
 	printf("Back in the main thread\nDoing complex calculation\n");
 	printf("Received from thread 2: %d\nReceived from thread 1: %d\n", *(int*)returnvalue1, *(int*)returnvalue2);
+	//while(1){}
 	printf("Main thread completed calculation\n Exiting\n");
 
 }
@@ -50,6 +53,7 @@ void* routine1(void* params)
 		j += 0.957636*0.6537728;
 		//printf("%f6\n", j);
 	}
+
 	//sleep(10);
 
 	printf("Ending routine 1.\n");
@@ -57,7 +61,7 @@ void* routine1(void* params)
 	int* b = (int*) malloc(sizeof(int));
 	while(1){}
 	*b = 10;
-	printf("Should never reach here*****************\n");
+	//printf("Should never reach here*****************\n");
 	return (void*)b;
 }
 
@@ -80,5 +84,5 @@ void* routine2(void* params)
 	int* b = (int*) malloc(sizeof(int));
 	*b = 20;
 
-	return (void*)b;
+	gtthread_exit( (void*)b);
 }

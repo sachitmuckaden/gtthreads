@@ -37,5 +37,13 @@ typedef struct gtthread_tcb{
 	void* joinval;
 }gtthread_tcb;
 
+typedef struct gtthread_mutex_t{
+	int lock; //Zero indicates unlocked. One indicates locked.
+	gtthread_t owner;
+	//int destroyed;
+
+}gtthread_mutex_t;
+
+
 
 #endif /* STRUCTURE_H_ */

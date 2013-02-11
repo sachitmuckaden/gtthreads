@@ -24,9 +24,6 @@
 
 #define GTTHREAD_CANCELLED 15
 
-typedef struct gtthread_mutex_t{
-
-}gtthread_mutex_t;
 
 //global variables
 
