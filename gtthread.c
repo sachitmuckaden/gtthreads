@@ -40,7 +40,7 @@ void gtthread_init(long period)
 	queue_init(&deletequeue);
 	main_thrcb = (gtthread_tcb*) malloc(sizeof(gtthread_tcb));
 
-	//main_thrcb->ctxt = &main_ctxt;
+
 
 	main_thrcb->thrid = 0;
 	main_thrcb->isblocked = 0;
@@ -141,7 +141,7 @@ int  gtthread_create(gtthread_t* thread,
 
 int  gtthread_join(gtthread_t thread, void **status)
 {
-	//First check if the thread is still running.
+
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
 	gtthread_tcb* joinable = queue_search(&readyqueue, thread);
 	if(joinable==NULL)
