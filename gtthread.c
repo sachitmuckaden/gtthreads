@@ -100,6 +100,8 @@ int  gtthread_create(gtthread_t* thread,
 	ucontext_t* ctxt;
 	gtthread_tcb* tcb;
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+
+	//Check to see if gtthread_init has been run. If not exit
 	if(!initialized)
 	{
 		printf("Attempted to create without initializing\n");
@@ -115,15 +117,19 @@ int  gtthread_create(gtthread_t* thread,
 	ctxt->uc_stack.ss_sp =  stck;
 	ctxt->uc_stack.ss_size = STACK_SIZE*sizeof(char);
 	ctxt->uc_link = NULL;
+
+	//Initialize the signal mask of each context to an empty set
 	if(sigemptyset(&ctxt->uc_sigmask)<0)
 	{
 		return -1;
 	}
+
 	makecontext(ctxt, wrapper_function, 2, start_routine, arg);
 
 	tcb = (gtthread_tcb*) malloc(sizeof(gtthread_tcb));
 	tcb->ctxt = ctxt;
 
+	//Assign unique thread id to each thread
 	tcb->thrid = ++current_thr_id;
 	*thread = tcb->thrid;
 	tcb->isblocked = 0;
@@ -143,9 +149,12 @@ int  gtthread_join(gtthread_t thread, void **status)
 {
 
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+
+	//Check if thread is in the readyqueue.
 	gtthread_tcb* joinable = queue_search(&readyqueue, thread);
 	if(joinable==NULL)
 	{
+		//Since thread isn't in the ready queue check the deletequeue
 		joinable = queue_search(&deletequeue,thread);
 		if(joinable!=NULL)
 		{
@@ -158,14 +167,18 @@ int  gtthread_join(gtthread_t thread, void **status)
 		}
 	}
 
+	//Thread is in neither queue. Return error
 	if(joinable==NULL)
 	{
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 		return ESRCH;
 	}
 
+	//If the thread is in the ready queue. Enqueue the current thread into its join queue.
 	queue_insert_normal(&joinable->join_queue,  current_thrcb);
 	current_thrcb->isblocked =1;
+
+	//Yield the processor after blocking the current thread.
 	schedule_next(26);
 	if(status!=NULL)
 		*status = current_thrcb->joinval;
@@ -188,14 +201,14 @@ void gtthread_exit(void *retval)
 {
 	//Remember process shared resources should not be released. When implementing locks etc dp npt release locks on gtthread_exit
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+	//set the completed flag to indicate to the scheduler to remove the thread from readyqueue
 	current_thrcb->iscomplete = 1;
+	//Store the return value of the thread
 	current_thrcb->ret = retval;
-	//queue_insert_normal(&deletequeue, (queue_remove(&readyqueue, current_thrcb->thrid))->thrcb);
-	//if(DEBUG)printf("Succesfully removed from queue\n");
 
-	//SIGMASK ALL
 	if(size_of_q(&(current_thrcb->join_queue))>0)
 	{
+		//Unblock all threads waiting to join with the current thread and make the return value available to them
 		queue_unblock_all(&(current_thrcb->join_queue), retval);
 	}
 
@@ -213,6 +226,8 @@ int  gtthread_cancel(gtthread_t thread)
 {
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
 	int* retval = (void*) malloc(sizeof(int));
+
+	//Set return value to threads to join with this thread to GTTHREAD_CANCELLED
 	*retval = GTTHREAD_CANCELLED;
 	gtthread_tcb* canceltcb = queue_search(&readyqueue, thread);
 	if(canceltcb==NULL)
@@ -221,6 +236,7 @@ int  gtthread_cancel(gtthread_t thread)
 		return -1;
 	}
 
+	//Complete the cancelled thread and remove it from the queue immediately
 	canceltcb->iscomplete = 1;
 	queue_insert_normal(&deletequeue, (queue_remove(&readyqueue, thread))->thrcb);
 	//queue_remove(&readyqueue, thread);
@@ -230,6 +246,7 @@ int  gtthread_cancel(gtthread_t thread)
 	//SIGMASK ALL
 	if(size_of_q(&(canceltcb->join_queue))>0)
 	{
+		//Unblock all threads waiting on the cancelled thread
 		queue_unblock_all(&(canceltcb->join_queue), (void*)retval);
 	}
 
@@ -261,17 +278,21 @@ int  gtthread_mutex_init(gtthread_mutex_t *mutex)
 int  gtthread_mutex_lock(gtthread_mutex_t *mutex)
 {
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+	//Indicate deadlock if a thread tries to lock a mutex that it already holds.
 	if(mutex->owner==current_thrcb->thrid)
 	{
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 		return EDEADLK;
 	}
+
 	while(mutex->lock)
 	{
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 		if(DEBUG)printf("Waiting for lock####################################################\n");
+		//yield the processor in the case of a lock
 		schedule_next(SIGINT);
 	}
+
 	mutex->lock = 1;
 	if(DEBUG)printf("Acquired finally\n");
 	mutex->owner = current_thrcb->thrid;
@@ -282,11 +303,15 @@ int  gtthread_mutex_lock(gtthread_mutex_t *mutex)
 int  gtthread_mutex_unlock(gtthread_mutex_t *mutex)
 {
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
+
+	//Generate error if the current thread doesn't own the mutex
 	if(current_thrcb->thrid!=mutex->owner)
 	{
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
 		return EPERM;
 	}
+
+	//Generate error if the mutex isn't locked
 	else if(!mutex->lock)
 	{
 		sigprocmask(SIG_UNBLOCK, &threadprocmask, NULL);
@@ -309,6 +334,7 @@ void* schedule_next(int signum)
 	sigprocmask(SIG_BLOCK, &threadprocmask, NULL);
 	if (size_of_q(&readyqueue)>1)//false this means only the main thread is in the queue
 	{
+		//If thread is completed remove it from the ready queue and insert into delete queue
 		if(current_thrcb->iscomplete)
 		{
 			queue_insert_normal(&deletequeue, (queue_remove(&readyqueue, current_thrcb->thrid))->thrcb);
@@ -316,7 +342,9 @@ void* schedule_next(int signum)
 		if(DEBUG)printf("Scheduling next thread-----------------\n");
 		gtthread_tcb* tmpthr;
 		tmpthr = current_thrcb;
+		//Get the next thread in the ready queue
 		current_thrcb = queue_next(&readyqueue);
+		//If the next thread is blocked continue searching for an unblocked thread
 		while(current_thrcb->isblocked)
 		{
 			if(DEBUG)printf("Current thread blocked: %ld\n", (long)current_thrcb->thrid);
@@ -336,6 +364,7 @@ void* schedule_next(int signum)
 		}
 		else
 		{
+			//set timer value explicitly every time
 			setitimer(ITIMER_VIRTUAL, &interval, NULL);
 			swapcontext(tmpthr->ctxt, current_thrcb->ctxt);
 		}
